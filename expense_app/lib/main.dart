@@ -1,127 +1,175 @@
 import 'package:flutter/material.dart';
-import 'services/api_service.dart';
-import 'models/expense.dart';
+import 'login_page.dart';
+import 'home_page.dart';
 
-void main() {
-  runApp(ExpenseApp());
-}
+void main() => runApp(ExpenseApp());
 
 class ExpenseApp extends StatelessWidget {
-  const ExpenseApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Expense Manager',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: ExpenseListScreen(),
+      debugShowCheckedModeBanner: false,
+      title: 'Quản lý chi tiêu',
+      theme: ThemeData(
+        primarySwatch: Colors.deepPurple,
+      ),
+
+      home: LoginPage(),
     );
   }
 }
 
-class ExpenseListScreen extends StatefulWidget {
-  const ExpenseListScreen({super.key});
-
+class ExpenseHomeScreen extends StatefulWidget {
   @override
-  _ExpenseListScreenState createState() => _ExpenseListScreenState();
+  State<ExpenseHomeScreen> createState() => _ExpenseHomeScreenState();
 }
 
-class _ExpenseListScreenState extends State<ExpenseListScreen> {
-  late Future<List<Expense>> futureExpenses;
+class _ExpenseHomeScreenState extends State<ExpenseHomeScreen> {
+  final List<Map<String, dynamic>> _transactions = [];
 
-  @override
-  void initState() {
-    super.initState();
-    futureExpenses = ApiService.fetchExpenses();
-  }
-
-  final TextEditingController titleController = TextEditingController();
-  final TextEditingController amountController = TextEditingController();
-  bool isIncome = false; // ✅ thêm biến này để chọn chi tiêu hay thu nhập
-
-  void _addExpense() async {
-    if (titleController.text.isNotEmpty && amountController.text.isNotEmpty) {
-      await ApiService.addExpense(
-        titleController.text,
-        double.parse(amountController.text),
-        isIncome, // ✅ thêm tham số đúng với ApiService
-      );
-      setState(() {
-        futureExpenses = ApiService.fetchExpenses();
-      });
-      titleController.clear();
-      amountController.clear();
-    }
+  void _addTransaction(Map<String, dynamic> t) {
+    setState(() {
+      _transactions.add(t);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Quản lý chi tiêu")),
-      body: Column(
-        children: [
-          Expanded(
-            child: FutureBuilder<List<Expense>>(
-              future: futureExpenses,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return Center(child: Text("Lỗi: ${snapshot.error}"));
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Center(child: Text("Chưa có dữ liệu"));
-                } else {
-                  return ListView.builder(
-                    itemCount: snapshot.data!.length,
-                    itemBuilder: (context, index) {
-                      final expense = snapshot.data![index];
-                      return ListTile(
-                        title: Text(expense.title),
-                        subtitle: Text("Số tiền: ${expense.amount}"),
-                        trailing: Text(
-                          expense.date.toString(), // ✅ đổi createdAt thành date
-                        ),
-                      );
-                    },
-                  );
-                }
-              },
+      appBar: AppBar(title: Text('Quản lý chi tiêu')),
+      body: ListView.builder(
+        itemCount: _transactions.length,
+        itemBuilder: (ctx, i) {
+          final t = _transactions[i];
+          return Card(
+            child: ListTile(
+              leading: Icon(Icons.category),
+              title: Text('${t['category']} - ${t['amount']}đ'),
+              subtitle: Text('${t['date']} | ${t['note']}'),
+              trailing: Text(
+                t['type'] == 'expense' ? '-${t['amount']}' : '+${t['amount']}',
+                style: TextStyle(
+                    color: t['type'] == 'expense' ? Colors.red : Colors.green),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: Icon(Icons.add),
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => AddTransactionScreen()),
+          );
+          if (result != null) _addTransaction(result);
+        },
+      ),
+    );
+  }
+}
+
+class AddTransactionScreen extends StatefulWidget {
+  @override
+  State<AddTransactionScreen> createState() => _AddTransactionScreenState();
+}
+
+class _AddTransactionScreenState extends State<AddTransactionScreen> {
+  DateTime _date = DateTime.now();
+  final _amountController = TextEditingController();
+  final _noteController = TextEditingController();
+  String _type = 'expense';
+  String? _selectedCategory;
+
+  final List<String> _categories = [
+    'Ăn uống',
+    'Tiền điện',
+    'Tiền nước',
+    'Mua sắm',
+    'Đi lại',
+    'Quần áo',
+    'Mỹ phẩm',
+    'Khác'
+  ];
+
+  void _save() {
+    if (_selectedCategory == null || _amountController.text.isEmpty) return;
+    Navigator.pop(context, {
+      'category': _selectedCategory,
+      'amount': double.tryParse(_amountController.text) ?? 0,
+      'date': _date.toIso8601String().substring(0, 10),
+      'note': _noteController.text,
+      'type': _type,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Nhập khoản chi')),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Ngày: ${_date.toLocal().toString().substring(0, 10)}'),
+            ElevatedButton(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _date,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) setState(() => _date = picked);
+              },
+              child: Text('Chọn ngày'),
+            ),
+            TextField(
+              controller: _noteController,
+              decoration: InputDecoration(labelText: 'Ghi chú'),
+            ),
+            TextField(
+              controller: _amountController,
+              decoration: InputDecoration(labelText: 'Số tiền'),
+              keyboardType: TextInputType.number,
+            ),
+            DropdownButtonFormField<String>(
+              decoration: InputDecoration(labelText: 'Danh mục'),
+              value: _selectedCategory,
+              items: _categories
+                  .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                  .toList(),
+              onChanged: (v) => setState(() => _selectedCategory = v),
+            ),
+            Row(
               children: [
-                TextField(
-                  controller: titleController,
-                  decoration: InputDecoration(labelText: "Tên chi tiêu"),
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: Text('Chi tiêu'),
+                    value: 'expense',
+                    groupValue: _type,
+                    onChanged: (v) => setState(() => _type = v!),
+                  ),
                 ),
-                TextField(
-                  controller: amountController,
-                  decoration: InputDecoration(labelText: "Số tiền"),
-                  keyboardType: TextInputType.number,
-                ),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: isIncome,
-                      onChanged: (val) {
-                        setState(() {
-                          isIncome = val ?? false;
-                        });
-                      },
-                    ),
-                    Text("Là thu nhập"),
-                  ],
-                ),
-                ElevatedButton(
-                  onPressed: _addExpense,
-                  child: Text("Thêm chi tiêu"),
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: Text('Thu nhập'),
+                    value: 'income',
+                    groupValue: _type,
+                    onChanged: (v) => setState(() => _type = v!),
+                  ),
                 ),
               ],
             ),
-          )
-        ],
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _save,
+              child: Text('Lưu giao dịch'),
+              style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 40)),
+            ),
+          ],
+        ),
       ),
     );
   }
